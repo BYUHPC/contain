@@ -1,0 +1,43 @@
+#!/bin/bash
+
+
+
+# Create container directory and environment file
+container="$(mktemp -d -t contain-rootfs-XXXXXX)"
+container_env="${container/rootfs/environment}"
+printenv > "$container_env"
+trap 'rm -rf "$container" "$container_env"' EXIT
+
+
+
+# Environment variables to be passed to the container
+envvars=()
+while IFS= read -r -d '' VAR; do
+    # Apptainer can't handle funky variable names :/
+    [[ "$VAR" =~ ^[a-zA-Z0-9_]+= ]] && envvars+=("--env=$VAR")
+done < <(env -0)
+
+
+
+# Build the container and get bind mounts
+binds=()
+while read f; do
+    ls "$f" &>/dev/null || continue # no need to mount anything we can't see
+    # Symbolic links: create within the container
+    if [[ -L "$f" ]]; then # deal with symlinks at /
+        ln -s "$(realpath "$f")" "${container}${f}"
+    # Directories: create in container and add to bind mount list
+    else
+        mkdir -p "${container}${f}"
+        f="${f//,/\\,}" # Escape commas in path
+        f="${f//:/\\:}" # Escape colons in path
+        binds+=("--bind=$f")
+    fi
+done < <((df -a --output=target | sed 1d; ls -d /*) | sort -r | uniq | head -n -1) # head call gets rid of /
+
+
+
+# Run the container
+this_dir="$PWD"
+cd / # Can't be in $HOME or `--no-home` won't work
+apptainer --silent exec --no-home --pwd "$this_dir" --containall "${binds[@]}" "${envvars[@]}" "$container" "$@" # --env-file "$container_env"
