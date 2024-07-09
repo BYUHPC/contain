@@ -2,15 +2,21 @@
 
 
 
+# "Parse"
+USAGE="Usage: $0 program arg1 arg2 ...
+Prevent 'program' from spawning child processes that persist after it exits.
+See https://github.com/BYUHPC/contain for details."
+[[ "$1" = -h || "$1" = --help ]] && echo "$USAGE" && exit
+
+
+
 # Create container directory and environment file
 container="$(mktemp -d -t contain-rootfs-XXXXXX)"
-container_env="${container/rootfs/environment}"
-printenv > "$container_env"
-trap 'rm -rf "$container" "$container_env"' EXIT
+trap 'rm -rf "$container"' EXIT
 
 
 
-# Environment variables to be passed to the container
+# Environment variables to be passed into the container
 envvars=()
 while IFS= read -r -d '' VAR; do
     # Apptainer can't handle funky variable names :/
